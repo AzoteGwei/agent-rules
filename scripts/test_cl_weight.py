@@ -16,6 +16,13 @@ import cl_weight as cw  # noqa: E402
 SCRIPT = Path(__file__).resolve().parent / "cl_weight.py"
 
 
+def marks(path: str, text: str) -> str:
+    """One letter per line: C comment, T test, - other."""
+    a = cw.analyze(path, text)
+    return "".join("C" if n in a.comment else "T" if n in a.test else "-"
+                   for n in range(1, text.count("\n") + 2))
+
+
 class ParseDiffTest(unittest.TestCase):
     def test_parses_hunks_renames_and_deletions(self):
         text = "\n".join([
@@ -81,6 +88,24 @@ class WeighTest(unittest.TestCase):
         self.assertEqual(cw.weigh(diff, "code").tenths, 10)
 
 
+class AnalyzeTest(unittest.TestCase):
+    def test_python_docstrings_and_hashes_in_strings(self):
+        text = ('"""Doc.\n"""\nx = """not\ndoc"""\ns = "# no"\n    # yes\n'
+                'f(\n    "a"\n)\nx = \\\n    "b"')
+        self.assertEqual(marks("m.py", text), "CC---C-----")
+
+    def test_c_family_strings_and_block_comments(self):
+        self.assertEqual(marks("a.ts", 'a("//");\n/* x\n y */\n/* z */ b();'), "-CC-")
+        self.assertEqual(marks("a.ts", "t = `${ `//` }\n// q`;"), "--")
+        self.assertEqual(marks("a.go", "s := `/*\n*/`\n// c"), "--C")
+        self.assertEqual(marks("a.cc", 'R"d(\n// )d";\nint n = 1\'0;\n// c'), "---C")
+
+    def test_rust_nested_comments_and_test_module(self):
+        text = ("/* a /* b */\nc */\nfn f<'a>() -> char { '}' }\n"
+                "#[cfg(test)]\nmod tests {\n    fn t() { r#\"}\"#; }\n}\nfn g() {}")
+        self.assertEqual(marks("lib.rs", text), "CC-TTTT-")
+
+
 class EndToEndTest(unittest.TestCase):
     def setUp(self):
         self.dir = Path(tempfile.mkdtemp())
@@ -112,11 +137,11 @@ class EndToEndTest(unittest.TestCase):
     @unittest.skipUnless(shutil.which("jj"), "jj is not installed")
     def test_jj_working_copy_change(self):
         self.sh("jj", "git", "init")
-        (self.repo / "a.py").write_text("x = 1\n")
+        (self.repo / "a.py").write_text("# c\nx = 1\n")
         (self.repo / "README.md").write_text("hi\n")
         (self.repo / ".azote-cl.toml").write_text('[paths]\ngenerated = ["README.md"]\n')
         code, report = self.weigh()
-        self.assertEqual((code, report["vcs"], report["total"]), (0, "jj", 2.0))
+        self.assertEqual((code, report["vcs"], report["total"]), (0, "jj", 2.3))
 
 
 if __name__ == "__main__":

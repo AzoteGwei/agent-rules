@@ -10,6 +10,11 @@ against its parent @-. Every added or deleted line is weighted by its kind:
 A deleted file, and a file change without line hunks (rename, binary, mode or
 empty file), counts as one line of the file's kind.
 
+Comment-only lines are recognised in Python, JavaScript, TypeScript, Rust, Go,
+C and C++ (elsewhere they weigh as the file's kind). Python string statements
+such as docstrings count as comments, and Rust `#[cfg(test)] mod` blocks in
+source files weigh as test.
+
 A repository can correct file categories in `.azote-cl.toml` at its root. Only
 a `[paths]` table is accepted; each key (generated, test, config, doc, code)
 holds globs matched against the repository-relative path with fnmatch, where
@@ -216,6 +221,219 @@ def classify(path: str, head: str, overrides: dict[str, list[str]]) -> str:
     return "code"
 
 
+LANGUAGES = {
+    ".py": "python", ".pyi": "python",
+    ".js": "js", ".mjs": "js", ".cjs": "js", ".jsx": "js",
+    ".ts": "js", ".mts": "js", ".cts": "js", ".tsx": "js",
+    ".rs": "rust", ".go": "go",
+    ".c": "c", ".h": "c", ".cc": "c", ".cpp": "c", ".cxx": "c", ".c++": "c",
+    ".hh": "c", ".hpp": "c", ".hxx": "c", ".h++": "c", ".ipp": "c", ".inl": "c",
+}
+PY_STRING = re.compile(r"([rRbBuUfF]{0,2})('''|\"\"\"|'|\")")
+RUST_RAW = re.compile(r'[bc]?r(#*)"')
+RUST_CHAR = re.compile(r"'(?:\\(?:x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]{1,6}\}|.)|[^\\'\n])'")
+C_RAW = re.compile(r'(?:u8|[uUL])?R"([^()\\\s]{0,16})\(')
+C_STRING = re.compile(r"(?:u8|[uUL])?(['\"])")
+RUST_TEST_MOD = re.compile(
+    r"#\s*\[\s*cfg\s*\(\s*test\s*\)\s*\]\s*(?:#\s*\[[^\]]*\]\s*)*"
+    r"(?:pub(?:\s*\([^)]*\))?\s+)?mod\s+\w+\s*\{")
+
+
+class _Scanner:
+    """Find the lines of a source file that hold code and those that hold comments.
+
+    Strings are tracked so comment markers inside them are not mistaken for
+    comments. Python string statements (docstrings) count as comments. The
+    `masked` copy of the text has comments and strings blanked out.
+    """
+
+    def __init__(self, text: str, lang: str) -> None:
+        self.s, self.lang = text, lang
+        self.i, self.line = 0, 1
+        self.code: set[int] = set()
+        self.comment: set[int] = set()
+        self.masked = list(text)
+        # Python state for telling docstrings from other strings.
+        self.depth = 0
+        self.continued = self.backslash = False
+        self.pending: tuple[int, int] | None = None
+
+    def run(self, in_template: bool = False) -> None:
+        """Scan to the end, or to the `}` closing a JS template substitution."""
+        braces = 0
+        while self.i < len(self.s):
+            c = self.s[self.i]
+            if c == "\n":
+                self._newline()
+            elif c in " \t\r\f\v":
+                self.i += 1
+            elif in_template and c == "}" and braces == 0:
+                return
+            elif not (self._comment() or self._string()):
+                braces += {"{": 1, "}": -1}.get(c, 0)
+                self._code(c)
+        self._flush_pending("comment")
+
+    def _consume(self, end: int, kind: str) -> None:
+        """Consume s[i:end] as a "comment", "string" or (Python) "docstring" span."""
+        end, first = min(end, len(self.s)), self.line
+        for j in range(self.i, end):
+            if self.s[j] == "\n":
+                self.line += 1
+            else:
+                self.masked[j] = " "
+        self.i = end
+        if kind == "docstring":
+            self.pending = (first, self.line)
+        else:
+            (self.comment if kind == "comment" else self.code).update(range(first, self.line + 1))
+
+    def _flush_pending(self, kind: str) -> None:
+        if self.pending:
+            first, last = self.pending
+            (self.comment if kind == "comment" else self.code).update(range(first, last + 1))
+            self.pending = None
+
+    def _newline(self) -> None:
+        self._flush_pending("comment")
+        self.continued, self.backslash = self.backslash, False
+        self.line += 1
+        self.i += 1
+
+    def _code(self, c: str) -> None:
+        self._flush_pending("code")
+        self.code.add(self.line)
+        self.backslash = c == "\\"
+        if c in "([{":
+            self.depth += 1
+        elif c in ")]}":
+            self.depth = max(0, self.depth - 1)
+        self.i += 1
+
+    def _comment(self) -> bool:
+        s, i = self.s, self.i
+        if s.startswith("#" if self.lang == "python" else "//", i):
+            end = s.find("\n", i)
+            self._consume(len(s) if end < 0 else end, "comment")
+        elif self.lang != "python" and s.startswith("/*", i):
+            self._consume(self._block_end(i + 2), "comment")
+        else:
+            return False
+        return True
+
+    def _block_end(self, j: int) -> int:
+        depth = 1
+        while depth:
+            close = self.s.find("*/", j)
+            if close < 0:
+                return len(self.s)
+            opened = self.s.find("/*", j, close) if self.lang == "rust" else -1
+            if opened >= 0:
+                depth, j = depth + 1, opened + 2
+            else:
+                depth, j = depth - 1, close + 2
+        return j
+
+    def _quoted_end(self, j: int, quote: str, multiline: bool) -> int:
+        s = self.s
+        while j < len(s):
+            if s[j] == "\\":
+                j += 2
+            elif s.startswith(quote, j):
+                return j + len(quote)
+            elif s[j] == "\n" and not multiline:
+                return j
+            else:
+                j += 1
+        return len(s)
+
+    def _string(self) -> bool:
+        s, i, lang = self.s, self.i, self.lang
+        after_word = i > 0 and (s[i - 1].isalnum() or s[i - 1] == "_")
+        if lang == "python":
+            m = PY_STRING.match(s, i)
+            if not m or (m[1] and after_word):
+                return False
+            self._flush_pending("code")
+            doc = self.line not in self.code and self.depth == 0 and not self.continued
+            end = self._quoted_end(m.end(), m[2], multiline=len(m[2]) == 3)
+            self.backslash = False
+            self._consume(end, "docstring" if doc else "string")
+            return True
+        if lang == "js" and s[i] == "`":
+            self._template()
+            return True
+        if lang == "go" and s[i] == "`":
+            end = s.find("`", i + 1)
+            end = len(s) if end < 0 else end + 1
+        elif lang == "rust" and not after_word and (m := RUST_RAW.match(s, i)):
+            close = '"' + m[1]
+            end = s.find(close, m.end())
+            end = len(s) if end < 0 else end + len(close)
+        elif lang == "rust" and s[i] == "'":
+            if not (m := RUST_CHAR.match(s, i)):
+                return False  # a lifetime or loop label
+            end = m.end()
+        elif lang == "c" and not after_word and (m := C_RAW.match(s, i)):
+            close = ")" + m[1] + '"'
+            end = s.find(close, m.end())
+            end = len(s) if end < 0 else end + len(close)
+        elif lang == "c" and (m := C_STRING.match(s, i)):
+            # A quote right after a word is a digit separator (1'000), not a char.
+            if after_word and (m.end() - i > 1 or m[1] == "'"):
+                return False
+            end = self._quoted_end(m.end(), m[1], multiline=False)
+        elif s[i] in "\"'":
+            end = self._quoted_end(i + 1, s[i], multiline=lang == "rust" and s[i] == '"')
+        else:
+            return False
+        self._consume(end, "string")
+        return True
+
+    def _template(self) -> None:
+        """Consume a JS template literal, scanning `${...}` substitutions as code."""
+        s, j = self.s, self.i + 1
+        while j < len(s):
+            if s[j] == "\\":
+                j += 2
+            elif s[j] == "`":
+                self._consume(j + 1, "string")
+                return
+            elif s.startswith("${", j):
+                self._consume(j + 2, "string")
+                self.run(in_template=True)
+                j = self.i + 1
+            else:
+                j += 1
+        self._consume(j, "string")
+
+
+def _rust_test_lines(masked: str) -> set[int]:
+    """Lines of `#[cfg(test)] mod name { ... }` blocks."""
+    lines: set[int] = set()
+    for m in RUST_TEST_MOD.finditer(masked):
+        depth, end = 0, len(masked)
+        for j in range(m.end() - 1, len(masked)):
+            depth += {"{": 1, "}": -1}.get(masked[j], 0)
+            if depth == 0:
+                end = j
+                break
+        first = masked.count("\n", 0, m.start()) + 1
+        lines.update(range(first, masked.count("\n", 0, end) + 2))
+    return lines
+
+
+def analyze(path: str, text: str) -> Analysis | None:
+    """Find comment-only lines (and Rust inline test lines) of a source file."""
+    lang = LANGUAGES.get(PurePosixPath(path).suffix.lower())
+    if lang is None:
+        return None
+    scanner = _Scanner(text, lang)
+    scanner.run()
+    test = _rust_test_lines("".join(scanner.masked)) if lang == "rust" else set()
+    return Analysis(comment=scanner.comment - scanner.code, test=test)
+
+
 def _line_kind(category: str, body: str, lineno: int, analysis: Analysis | None) -> str:
     if category == "generated":
         return "generated"
@@ -348,7 +566,15 @@ def measure(vcs: Git | Jj, overrides: dict[str, list[str]]) -> list[Report]:
     for diff in parse_diff(vcs.diff()):
         side = "old" if diff.new_path is None else "new"
         head = "\n".join(content(side, diff.path).split("\n", 5)[:5])
-        reports.append(weigh(diff, classify(diff.path, head, overrides)))
+        category = classify(diff.path, head, overrides)
+        old = new = None
+        # A deleted file counts as one line, so only kept files need analysis.
+        if category in ("code", "test") and diff.new_path is not None:
+            if diff.deleted and diff.old_path is not None:
+                old = analyze(diff.old_path, content("old", diff.old_path))
+            if diff.added:
+                new = analyze(diff.new_path, content("new", diff.new_path))
+        reports.append(weigh(diff, category, old, new))
     return reports
 
 
