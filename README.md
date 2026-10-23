@@ -11,6 +11,9 @@ An agent skill that encodes a set of implementation rules for coding agents:
   installed, only jj is used.
 - **Signed commits.** An unsigned commit, or a signing failure, stops the agent
   until the User explains what happened.
+- **The User's identity only.** Commits use the configured author and
+  committer as they are, carry no agent attribution (co-author trailers,
+  "generated with" lines, URLs), and a missing identity stops the agent.
 - **Google-style CL descriptions**, and language rules for reports, comments
   and docs.
 

@@ -51,7 +51,9 @@ The change being prepared is:
 4. **Write the CL description** (see below). jj: `jj describe -m "..."`.
 5. **Get it reviewed** by an independent reviewer (see below) until it is
    approved.
-6. **Commit.** jj: `jj new` (the described `@` becomes the commit).
+6. **Commit** (before the first one, check the identity; see "Commit
+   identity and attribution"). jj: `jj new` (the described `@` becomes the
+   commit).
    git: `git commit -F <message file>`.
 7. **Check the signature** (see below).
 
@@ -124,6 +126,25 @@ Follow
   the approach, and anything the reviewer or a future reader should know
   (limitations, follow-up CLs, `--allow-large` approval).
 
+## Commit identity and attribution
+
+The User configures who authors and commits. Use that configuration as it is:
+
+- Never set or override the identity: no `jj metaedit --author` or
+  `--update-author`, no `git commit --author` or `--reset-author`, no
+  `GIT_AUTHOR_*`, `GIT_COMMITTER_*`, `JJ_USER` or `JJ_EMAIL` environment
+  variables, and no edits to identity config. Pass no `git -c`,
+  `jj --config` or `jj --config-file` overrides to any command that creates
+  or rewrites commits.
+- Before the first commit, check that an identity is configured. jj:
+  `jj config get user.name` and `jj config get user.email`. git:
+  `git config user.name` and `git config user.email`. If either is missing or
+  empty, **stop and ask the User**; never make one up.
+- Commits carry no agent attribution: no `Co-authored-by:` or similar
+  trailers (and no `git commit --signoff` or `--trailer`), no "Generated
+  with ..." lines, no agent or tool names as credit or byline, no URLs
+  pointing at an agent, unless the User explicitly asks for them.
+
 ## Signed commits
 
 The User configures commit signing. Never disable or work around it: no
@@ -152,5 +173,6 @@ other commits.
 - the reviewer has requested changes 3 times for the same commit, or you
   disagree with a finding;
 - signing fails, or a commit is unsigned;
+- the commit identity (`user.name` / `user.email`) is not configured;
 - `cl_weight.py` exits with status 2 and the cause is not yours to fix;
 - the docs language or the CL description language is unclear.

@@ -49,7 +49,9 @@ code as you need. Check:
 4. **CL description**: follows
    `references/eng-practices/review/developer/cl-descriptions.md` (a short
    imperative summary line, a blank line, then what and why) and matches the
-   diff.
+   diff. It carries no agent attribution: no `Co-authored-by:` or similar
+   trailers, "Generated with ..." lines, agent or tool names as credit or
+   byline, or agent URLs.
 5. **Size**: the total is at most 300 WL, or the description says the User
    approved `--allow-large` and why. Request a split if the CL mixes unrelated
    changes.

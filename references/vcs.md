@@ -11,6 +11,7 @@ messages with `-m` (or a file) so no editor opens.
 | Diff for the reviewer    | `jj diff -r @ --git` |
 | Measure                  | `python3 <skill>/scripts/cl_weight.py` |
 | Describe the CL          | `jj describe -m "<summary>" -m "<body>"` |
+| Check the identity       | `jj config get user.name` and `jj config get user.email` |
 | Commit (finish `@`)      | `jj new` |
 | Check the last signature | `jj log -r @- --no-graph -T 'if(signature, signature.status(), "unsigned")'` |
 | Check mutable commits    | `jj log -r 'mutable()' -T 'change_id.short() ++ " " ++ if(signature, signature.status(), "unsigned") ++ "\n"' --no-graph` |
@@ -34,6 +35,7 @@ Notes:
 | Stage this CL only       | `git add <paths>` |
 | Diff for the reviewer    | `git diff --cached` |
 | Measure                  | `python3 <skill>/scripts/cl_weight.py` |
+| Check the identity       | `git config user.name` and `git config user.email` |
 | Commit                   | `git commit -F <message file>` |
 | Check the last signature | `git log -1 --format=%G?` (`G` or `U` is signed) |
 | Check unpushed commits   | `git log --format='%h %G? %s' @{upstream}..HEAD` (no upstream: `<base>..HEAD`, or `-n <number of your commits>`) |
