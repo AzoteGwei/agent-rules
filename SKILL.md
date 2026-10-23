@@ -1,5 +1,5 @@
 ---
-name: azote-coding-rules
+name: agent-rules
 description: Mandatory rules for writing and committing code. Every commit is a Small CL of at most 300 Weight Lines (checked by scripts/cl_weight.py), reviewed by an independent reviewer subagent before it is committed, made with jj when the repository has a .jj directory (git otherwise), and signed. Covers Google-style CL descriptions and which language to use for reports, code comments and docs. Use whenever you change, split or commit code.
 ---
 

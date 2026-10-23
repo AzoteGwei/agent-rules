@@ -1,4 +1,4 @@
-# azote-coding-rules
+# Azote's Preferred Agent Coding Rules
 
 An agent skill that encodes a set of implementation rules for coding agents:
 
@@ -21,11 +21,22 @@ The rules themselves live in [`SKILL.md`](SKILL.md).
 
 ## Install
 
-Clone this repository and link it into your agent's skill directory, for
-example for Claude Code:
+Clone the repository straight into your agent's skill directory:
 
 ```sh
-ln -s "$PWD" ~/.claude/skills/azote-coding-rules
+# Claude Code
+git clone https://github.com/AzoteGwei/agent-rules ~/.claude/skills/agent-rules
+# Agents that load skills from ~/.agents/skills
+git clone https://github.com/AzoteGwei/agent-rules ~/.agents/skills/agent-rules
+```
+
+Or clone it anywhere and link it there (`-n` replaces an existing link
+instead of creating a new link inside it):
+
+```sh
+git clone https://github.com/AzoteGwei/agent-rules
+mkdir -p ~/.claude/skills  # or ~/.agents/skills, likewise below
+ln -sfn "$PWD/agent-rules" ~/.claude/skills/agent-rules
 ```
 
 `scripts/cl_weight.py` needs Python 3.11 or newer and no third-party packages.
