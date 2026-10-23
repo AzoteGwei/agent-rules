@@ -14,6 +14,8 @@ An agent skill that encodes a set of implementation rules for coding agents:
 - **The User's identity only.** Commits use the configured author and
   committer as they are, carry no agent attribution (co-author trailers,
   "generated with" lines, URLs), and a missing identity stops the agent.
+- **No unapproved pushes.** Commits stay local unless the User explicitly
+  allows pushing.
 - **Google-style CL descriptions**, and language rules for reports, comments
   and docs.
 

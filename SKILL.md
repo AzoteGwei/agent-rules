@@ -1,6 +1,6 @@
 ---
 name: agent-rules
-description: Mandatory rules for writing and committing code. Every commit is a Small CL of at most 300 Weight Lines (checked by scripts/cl_weight.py), reviewed by an independent reviewer subagent before it is committed, made with jj when the repository has a .jj directory (git otherwise), and signed. Covers Google-style CL descriptions and which language to use for reports, code comments and docs. Use whenever you change, split or commit code.
+description: Mandatory rules for writing and committing code. Every commit is a Small CL of at most 300 Weight Lines (checked by scripts/cl_weight.py), reviewed by an independent reviewer subagent before it is committed, made with jj when the repository has a .jj directory (git otherwise), signed, and never pushed without the User's explicit permission. Covers Google-style CL descriptions and which language to use for reports, code comments and docs. Use whenever you change, split or commit code.
 ---
 
 # Coding rules
@@ -19,9 +19,10 @@ person you work for. `<skill>` below is the directory that holds this file.
 
 Walk up from the working directory. If a `.jj` directory exists and the `jj`
 command is installed, use **only jj**: do not run git commands at all (use
-`jj git fetch` / `jj git push` for remotes). Use git only when there is no
-`.jj` directory, or `jj` is not installed. Never use interactive commands
-(editors, `-i`, `jj split` without paths). See
+`jj git fetch` / `jj git push` for remotes; push only as allowed in
+"Pushing"). Use git only when there is no `.jj` directory, or `jj` is not
+installed. Never use interactive commands (editors, `-i`, `jj split` without
+paths). See
 [`references/vcs.md`](references/vcs.md) for the commands.
 
 The change being prepared is:
@@ -56,6 +57,7 @@ The change being prepared is:
    commit).
    git: `git commit -F <message file>`.
 7. **Check the signature** (see below).
+8. **Do not push** unless the User has explicitly allowed it (see "Pushing").
 
 ## Small CLs (mandatory)
 
@@ -167,6 +169,21 @@ or with a bad signature in `jj log` / `git log`, **stop and ask the User what
 happened**. Do not retry with signing turned off and do not continue with
 other commits.
 
+## Pushing
+
+Commits stay local until the User says otherwise. Never push on your own:
+no `jj git push`, `git push`, or any other command that updates a remote.
+
+- Push only when the User explicitly asks for it. That permission covers the
+  push the User asked for, not later commits.
+- Push automatically after commits only when the User has explicitly said
+  so (for example "push after every commit"), and only within the scope the
+  User gave (repository, branch or bookmark, session).
+- Never force-push, delete remote branches or bookmarks, or push to a remote
+  or branch the User did not name, unless the User explicitly asks for that.
+- When work is done and pushing is not allowed, tell the User which commits
+  are ready to push.
+
 ## Stop and ask the User when
 
 - a CL cannot be split below 300 WL and an `--allow-large` approval is needed;
@@ -174,5 +191,7 @@ other commits.
   disagree with a finding;
 - signing fails, or a commit is unsigned;
 - the commit identity (`user.name` / `user.email`) is not configured;
+- a push you were allowed to make is rejected, or would need a force-push or a
+  remote or branch the User did not name;
 - `cl_weight.py` exits with status 2 and the cause is not yours to fix;
 - the docs language or the CL description language is unclear.

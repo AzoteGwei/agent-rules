@@ -18,7 +18,7 @@ messages with `-m` (or a file) so no editor opens.
 | Split `@`                | `jj split -m "<description of the first part>" <paths>` (the given paths go to a new parent `@-`, the rest stays in `@`) |
 | Work on the first part   | `jj edit @-` (measure, describe and review it as its own CL; do not run `jj new` here) |
 | Finish it, back to rest  | `jj next --edit` (replaces `jj new`; then check `@-`'s signature) |
-| Push                     | `jj git push` |
+| Push                     | `jj git push` (only with the User's explicit permission; see SKILL.md) |
 
 Notes:
 
@@ -39,6 +39,7 @@ Notes:
 | Commit                   | `git commit -F <message file>` |
 | Check the last signature | `git log -1 --format=%G?` (`G` or `U` is signed) |
 | Check unpushed commits   | `git log --format='%h %G? %s' @{upstream}..HEAD` (no upstream: `<base>..HEAD`, or `-n <number of your commits>`) |
+| Push                     | `git push` (only with the User's explicit permission; see SKILL.md) |
 
 Notes:
 
