@@ -1,12 +1,19 @@
 # SPDX-License-Identifier: BSD-2-Clause
 """Tests for cl_weight.py. Run with `python3 -m unittest` from this directory."""
 
+import json
+import os
+import shutil
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import cl_weight as cw  # noqa: E402
+
+SCRIPT = Path(__file__).resolve().parent / "cl_weight.py"
 
 
 class ParseDiffTest(unittest.TestCase):
@@ -72,6 +79,44 @@ class WeighTest(unittest.TestCase):
     def test_deleted_file_counts_one_line(self):
         diff = cw.FileDiff("a.py", None, deleted=[(1, "x = 1"), (2, "y = 2")])
         self.assertEqual(cw.weigh(diff, "code").tenths, 10)
+
+
+class EndToEndTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir)
+        (self.dir / "jj.toml").write_text('user.name = "T"\nuser.email = "t@example.com"\n')
+        self.env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
+                    "JJ_CONFIG": str(self.dir / "jj.toml")}
+        self.repo = self.dir / "repo"
+        self.repo.mkdir()
+
+    def sh(self, *cmd):
+        subprocess.run(cmd, cwd=self.repo, env=self.env, check=True, capture_output=True)
+
+    def weigh(self, *args):
+        proc = subprocess.run([sys.executable, str(SCRIPT), "--json", *args], cwd=self.repo,
+                              env=self.env, capture_output=True, text=True)
+        return proc.returncode, json.loads(proc.stdout) if proc.stdout else None
+
+    def test_git_staged_change_and_limit(self):
+        self.sh("git", "init", "-q")
+        (self.repo / "big.py").write_text("x = 1\n" * 301)
+        self.sh("git", "add", "big.py")
+        code, report = self.weigh()
+        self.assertEqual((code, report["vcs"], report["total"]), (1, "git", 301.0))
+        self.assertEqual(self.weigh("--allow-large", "vendoring")[0], 0)
+        (self.repo / ".azote-cl.toml").write_text("limit = 1000\n")
+        self.assertEqual(self.weigh()[0], 2)
+
+    @unittest.skipUnless(shutil.which("jj"), "jj is not installed")
+    def test_jj_working_copy_change(self):
+        self.sh("jj", "git", "init")
+        (self.repo / "a.py").write_text("x = 1\n")
+        (self.repo / "README.md").write_text("hi\n")
+        (self.repo / ".azote-cl.toml").write_text('[paths]\ngenerated = ["README.md"]\n')
+        code, report = self.weigh()
+        self.assertEqual((code, report["vcs"], report["total"]), (0, "jj", 2.0))
 
 
 if __name__ == "__main__":
